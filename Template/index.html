@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代理池状态</title>
+    <style>
+/* 引入字体文件 */
+@font-face {
+  font-family: 'AlibabaPuHuiTi';
+  src: url('./AlibabaPuHuiTi-3-45-Light.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* 重置样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 页面整体布局及背景 */
+body {
+  font-family: 'AlibabaPuHuiTi', sans-serif;
+  background: linear-gradient(45deg, #ff6a00, #ee0979, #ffb199, #a8ff78, #00bcd4, #ff4081, #4caf50);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  background-size: 400% 400%;
+  animation: gradientBG 10s ease infinite;
+  position: relative;
+}
+
+/* 背景动画效果 */
+@keyframes gradientBG {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 粒子效果 */
+body::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 10%, transparent 10.01%);
+  background-size: 20px 20px;
+  animation: particles 5s linear infinite;
+  z-index: -1;
+}
+
+@keyframes particles {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-100%); }
+}
+
+/* 主体内容区域，自动居中 */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* 顶部标题区 */
+header {
+  width: 100%;
+  max-width: 800px;
+  text-align: center;
+  margin-bottom: 20px;
+  position: relative;
+  z-index: 10;
+}
+
+header h1 {
+  font-size: 3rem;
+  color: #fff;
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5), 0 0 25px rgba(255, 255, 255, 0.4);
+  letter-spacing: 2px;
+  animation: slideIn 1s ease-out;
+}
+
+@keyframes slideIn {
+  0% {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+header p {
+  margin-top: 8px;
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 内容容器 */
+.container {
+  width: 100%;
+  max-width: 800px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: 30px;
+  overflow: hidden;
+}
+
+/* 卡片布局 */
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.95);
+  flex: 1 1 240px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  padding: 25px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+  backdrop-filter: blur(10px);
+  opacity: 0.9;
+  border: 2px solid transparent;
+  animation: fadeIn 0.5s ease-out;
+  animation-fill-mode: both;
+}
+
+.card:hover {
+  transform: translateY(-10px) rotate(2deg);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  opacity: 1;
+  border-color: #ff6a00;
+}
+
+.card:nth-child(1) { animation-delay: 0.2s; }
+.card:nth-child(2) { animation-delay: 0.4s; }
+.card:nth-child(3) { animation-delay: 0.6s; }
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card h2 {
+  font-size: 1.6rem;
+  color: #333;
+  margin-bottom: 10px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.card p {
+  font-size: 1rem;
+  color: #666;
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+/* 按钮样式 */
+.btn {
+  display: inline-block;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #ff6a00, #ee0979);
+  background-size: 200% 200%;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 1.2rem;
+  font-weight: bold;
+  transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  animation: gradient 3s ease infinite;
+}
+
+.btn:hover {
+  background: linear-gradient(135deg, #ff6a00, #ee0979);
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 页脚样式 */
+footer {
+  text-align: center;
+  padding: 15px;
+  font-size: 1rem;
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  animation: fadeInUp 1s ease-out;
+}
+
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  header h1 {
+    font-size: 2.5rem;
+  }
+  header p {
+    font-size: 1rem;
+  }
+  .card {
+    padding: 18px;
+    flex: 1 1 100%;
+    margin-bottom: 20px;
+  }
+  .btn {
+    width: 100%;
+    text-align: center;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  header h1 {
+    font-size: 2rem;
+  }
+  .card {
+    padding: 15px;
+  }
+  .btn {
+    padding: 12px;
+  }
+}
+  </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>代理池状态</h1>
+        <p id="server-location">{{.ServerLocation}}</p>
+      </header>
+
+      <div class="container">
+        <div class="cards">
+          <!-- 全球代理卡片 -->
+          <div class="card" id="global-proxy">
+            <h2>全球代理数量: <span id="proxy-lines">{{.ProxyLines}}</span></h2>
+            <p>最后更新时间: <span>{{.ProxyUpdated}}</span></p>
+            <button class="btn" id="download-global"
+              onclick="downloadFile('/proxy.txt')">下载全球代理</button>
+          </div>
+
+          <!-- 中国代理卡片 -->
+          <div class="card" id="cn-proxy">
+            {{if .CNLines}}
+            <h2>中国代理数量: <span id="cn-lines">{{.CNLines}}</span></h2>
+            <p>最后更新时间: <span id="cn-updated">{{.CNUpdated}}</span></p>
+            <button class="btn"
+              onclick="downloadFile('/cn.txt')">下载中国代理</button>
+            {{end}}
+          </div>
+
+          <!-- 未测活代理卡片 -->
+          <div class="card" id="http-proxy">
+            {{if .HTTPLines}}
+            <h2>未测活代理数量: <span id="http-lines">{{.HTTPLines}}</span></h2>
+            <p>最后更新时间: <span id="http-updated">{{.HTTPUpdated}}</span></p>
+            <button class="btn"
+              onclick="downloadFile('/http.txt')">下载未测活代理</button>
+            {{end}}
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      Powered By <span id="powered-by">{{.PoweredBy}}</span>
+    </footer>
+
+    <script>
+    window.onload = function() {
+      // 检查各模块数据，若为空则隐藏对应卡片
+      const proxyLines = document.getElementById("proxy-lines").innerText.trim();
+      if (!proxyLines) {
+        document.getElementById("global-proxy").style.display = "none";
+      }
+      if (!document.getElementById("cn-lines")?.innerText.trim()) {
+        document.getElementById("cn-proxy").style.display = "none";
+      }
+      if (!document.getElementById("http-lines")?.innerText.trim()) {
+        document.getElementById("http-proxy").style.display = "none";
+      }
+    };
+
+    function downloadFile(url) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = url.split("/").pop();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+  </body>
+</html>
