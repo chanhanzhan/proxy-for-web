@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>访问统计</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .stats-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--background-color);
+        }
+
+        .stats-number {
+            font-size: 2em;
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+
+        .stats-label {
+            color: var(--text-secondary);
+            font-size: 1.1em;
+        }
+
+        .stats-time {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            text-align: right;
+        }
+
+        .stats-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .list-container {
+            background: var(--background-color);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .list-container h2 {
+            color: var(--text-color);
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 10px;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        li {
+            padding: 10px 15px;
+            margin: 5px 0;
+            background: var(--card-background);
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        li:hover {
+            transform: translateX(5px);
+            background: linear-gradient(to right, var(--card-background), var(--background-color));
+        }
+
+        h1 {
+            color: var(--card-background);
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* IP 控制面板样式 */
+        .ip-control {
+            margin-top: 20px;
+            padding: 20px;
+            background: var(--card-background);
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .ip-control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .ip-control-mode {
+            font-size: 1.2em;
+            color: var(--primary-color);
+            font-weight: bold;
+            padding: 5px 15px;
+            border-radius: 20px;
+            background: var(--background-color);
+        }
+
+        .ip-lists {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .ip-list {
+            background: var(--background-color);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .ip-list h3 {
+            color: var(--text-color);
+            margin: 0 0 10px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .ip-list ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .ip-list li {
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: var(--card-background);
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .empty-list {
+            color: var(--text-secondary);
+            font-style: italic;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .token-tries {
+            margin-top: 20px;
+            padding: 20px;
+            background: var(--card-background);
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .token-tries-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .token-try-item {
+            padding: 10px;
+            background: var(--card-background);
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .token-try-item:hover {
+            transform: translateX(5px);
+            background: linear-gradient(to right, var(--card-background), var(--background-color));
+        }
+
+        .try-ip {
+            font-weight: bold;
+        }
+
+        .try-info {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        .try-count {
+            margin-right: 10px;
+        }
+
+        .try-time {
+            margin-right: 10px;
+        }
+
+        .try-blocked {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body class="rainbow-bg">
+    <div class="container">
+        <h1>访问统计面板</h1>
+        <div class="card fade-in">
+            <div class="stats-header">
+                <div>
+                    <div class="stats-number">{{.Visitors}}</div>
+                    <div class="stats-label">24小时内访问人数</div>
+                </div>
+                <div class="stats-time">
+                    <div>统计更新时间</div>
+                    <div>{{.LastUpdateTime}}</div>
+                </div>
+            </div>
+            
+            {{if .ShowIPLists}}
+            {{else}}
+            {{end}}
+            
+            {{if .ShowIPLists}}
+            <div class="card fade-in">
+                <div class="ip-control-header">
+                    <h2>IP 控制配置</h2>
+                    <div class="ip-control-mode">当前模式: {{.IPControl.Mode}}</div>
+                </div>
+                <div class="ip-lists">
+                    <div class="ip-list">
+                        <h3>黑名单</h3>
+                        {{if len .IPControl.Blacklist}}
+                        <ul>
+                            {{range .IPControl.Blacklist}}
+                            <li>{{.}}</li>
+                            {{end}}
+                        </ul>
+                        {{else}}
+                        <div class="empty-list">黑名单为空</div>
+                        {{end}}
+                    </div>
+                    <div class="ip-list">
+                        <h3>白名单</h3>
+                        {{if len .IPControl.Whitelist}}
+                        <ul>
+                            {{range .IPControl.Whitelist}}
+                            <li>{{.}}</li>
+                            {{end}}
+                        </ul>
+                        {{else}}
+                        <div class="empty-list">白名单为空</div>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card fade-in">
+                <h2>Token 尝试记录</h2>
+                <div class="token-tries-list">
+                    {{$hasRecords := false}}
+                    {{range $ip, $try := .TokenTries}}
+                        {{if gt $try.Count 0}}
+                            {{$hasRecords = true}}
+                            <div class="token-try-item {{if $try.Blocked}}blocked{{end}}">
+                                <div class="try-ip">{{$ip}}</div>
+                                <div class="try-info">
+                                    <span class="try-count">尝试次数: {{$try.Count}}</span>
+                                    <span class="try-time">最后尝试: {{$try.LastTry.Format "2006-01-02 15:04:05"}}</span>
+                                    {{if $try.Blocked}}
+                                    <span class="try-blocked">已封禁</span>
+                                    {{end}}
+                                </div>
+                            </div>
+                        {{end}}
+                    {{end}}
+                    {{if not $hasRecords}}
+                        <div class="empty-list">暂无 Token 尝试记录</div>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+        
+        <div class="stats-list">
+            <div class="list-container fade-in">
+                <h2>热门访问 IP</h2>
+                <ul>
+                    {{range .TopIPs}}
+                    <li>{{.}}</li>
+                    {{end}}
+                </ul>
+            </div>
+            
+            <div class="list-container fade-in">
+                <h2>热门访问路由</h2>
+                <ul>
+                    {{range .TopRoutes}}
+                    <li>{{.}}</li>
+                    {{end}}
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

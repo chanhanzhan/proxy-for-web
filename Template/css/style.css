@@ -1,0 +1,194 @@
+:root {
+    --primary-color: #4CAF50;
+    --secondary-color: #2196F3;
+    --background-color: #f5f5f5;
+    --card-background: #ffffff;
+    --text-color: #333333;
+    --text-secondary: #666666;
+}
+
+/* 彩虹渐变动画 */
+@keyframes rainbow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes wave {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.rainbow-bg {
+    position: relative;
+    background: linear-gradient(
+        45deg,
+        #ff2400,
+        #e81d1d,
+        #e8b71d,
+        #e3e81d,
+        #1de840,
+        #1ddde8,
+        #2b1de8,
+        #dd00f3
+    );
+    background-size: 400% 400%;
+    background-attachment: fixed;
+    animation: rainbow 10s ease infinite;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+}
+
+/* 波浪效果 */
+.rainbow-bg::before,
+.rainbow-bg::after {
+    content: "";
+    position: fixed;
+    left: -50%;
+    top: -50%;
+    right: -50%;
+    bottom: -50%;
+    transform-origin: center;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.rainbow-bg::before {
+    background: radial-gradient(
+        circle,
+        transparent 30%,
+        rgba(255, 255, 255, 0.2) 40%,
+        transparent 50%
+    );
+    background-size: 200% 200%;
+    animation: wave 15s linear infinite;
+}
+
+.rainbow-bg::after {
+    background: radial-gradient(
+        circle,
+        transparent 35%,
+        rgba(255, 255, 255, 0.15) 45%,
+        transparent 55%
+    );
+    background-size: 200% 200%;
+    animation: wave 12s linear infinite reverse;
+}
+
+/* 确保内容在波浪上层 */
+.container {
+    position: relative;
+    z-index: 2;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    height: auto;
+}
+
+/* 共享的基础样式 */
+body {
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    overflow-y: auto;
+}
+
+/* 当 body 有 rainbow-bg 类时的特殊样式 */
+body.rainbow-bg {
+    padding: 20px;
+}
+
+/* 卡片样式 */
+.card {
+    background: var(--card-background);
+    border-radius: 15px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+    margin-bottom: 20px;
+    transition: transform 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .card {
+        padding: 20px;
+    }
+}
+
+/* Token 尝试记录样式 */
+.token-tries {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid var(--background-color);
+}
+
+.token-tries h2 {
+    color: var(--text-color);
+    margin-bottom: 15px;
+}
+
+.token-tries-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+}
+
+.token-try-item {
+    background: var(--background-color);
+    padding: 15px;
+    border-radius: 8px;
+    transition: transform 0.2s ease;
+}
+
+.token-try-item:hover {
+    transform: translateX(5px);
+}
+
+.token-try-item.blocked {
+    border-left: 4px solid #ff4444;
+}
+
+.try-ip {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: var(--text-color);
+}
+
+.try-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.try-blocked {
+    color: #ff4444;
+    font-weight: bold;
+} 
