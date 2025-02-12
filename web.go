@@ -18,6 +18,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	_ "modernc.org/sqlite"
+	"github.com/gorilla/mux"
 )
 
 //go:embed Template/index.html
@@ -33,15 +34,83 @@ var (
 
 // 配置结构体
 type Config struct {
-	PoweredBy      string `json:"poweredBy"`
-	Port           int    `json:"port"`
-	ServerLocation string `json:"serverLocation"`
+	PoweredBy      string    `json:"poweredBy"`
+	Token          string    `json:"token"`
+	Port           int       `json:"port"`
+	ServerLocation string    `json:"serverLocation"`
+	IPControl      IPControl `json:"ipControl"`
+	APIMethod      string    `json:"apiMethod"`  // "post", "get", "both"
+}
+
+type IPControl struct {
+	Mode      string   `json:"mode"`      // "none", "blacklist", "whitelist"
+	Blacklist []string `json:"blacklist"`
+	Whitelist []string `json:"whitelist"`
+}
+
+// IPControl配置结构体
+type IPControlConfig struct {
+	Mode      string   `json:"mode"`
+	Blacklist []string `json:"blacklist"`
+	Whitelist []string `json:"whitelist"`
 }
 
 // 访问日志结构体
 type AccessLog struct {
 	IP        string
 	Timestamp time.Time
+}
+
+// 添加颜色常量
+const (
+	colorRed     = "\033[31m"
+	colorGreen   = "\033[32m"
+	colorYellow  = "\033[33m"
+	colorBlue    = "\033[34m"
+	colorMagenta = "\033[35m"
+	colorCyan    = "\033[36m"
+	colorReset   = "\033[0m"
+)
+
+// 日志工具函数
+func colorLog(color, level, format string, v ...interface{}) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logMessage := fmt.Sprintf(format, v...)
+	log.Printf("%s%s [%s] %s%s\n", color, timestamp, level, logMessage, colorReset)
+}
+
+func logInfo(format string, v ...interface{}) {
+	colorLog(colorGreen, "INFO", format, v...)
+}
+
+func logError(format string, v ...interface{}) {
+	colorLog(colorRed, "ERROR", format, v...)
+}
+
+func logWarn(format string, v ...interface{}) {
+	colorLog(colorYellow, "WARN", format, v...)
+}
+
+func logDebug(format string, v ...interface{}) {
+	colorLog(colorCyan, "DEBUG", format, v...)
+}
+
+func logAPI(r *http.Request, status int, message string) {
+	method := fmt.Sprintf("%s%s%s", colorMagenta, r.Method, colorReset)
+	path := fmt.Sprintf("%s%s%s", colorBlue, r.URL.Path, colorReset)
+	statusColor := colorGreen
+	if status >= 400 {
+		statusColor = colorRed
+	} else if status >= 300 {
+		statusColor = colorYellow
+	}
+	statusStr := fmt.Sprintf("%s%d%s", statusColor, status, colorReset)
+	
+	clientIP := getClientIP(r)
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	
+	log.Printf("%s [API] %s %s %s from %s - %s\n",
+		timestamp, method, path, statusStr, clientIP, message)
 }
 
 func init() {
@@ -55,17 +124,44 @@ func init() {
 }
 
 func readConfig() {
+	if _, err := os.Stat("config.json"); os.IsNotExist(err) {
+		defaultConfig := Config{
+			PoweredBy:      "@CLFchen",
+			Token:         "123456788",
+			Port:          8080,
+			ServerLocation: "当前测试服务器位于: xxx",
+			APIMethod:      "both",
+		}
+		
+		data, err := json.MarshalIndent(defaultConfig, "", "    ")
+		if err != nil {
+			logError("创建默认配置失败: %v", err)
+			os.Exit(1)
+		}
+		
+		if err := os.WriteFile("config.json", data, 0644); err != nil {
+			logError("写入默认配置失败: %v", err)
+			os.Exit(1)
+		}
+		
+		logInfo("已创建默认配置文件 config.json")
+		config = defaultConfig
+		return
+	}
+
 	file, err := os.Open("config.json")
 	if err != nil {
-		log.Fatalf("读取 config.json 时出错: %v\n", err)
+		logError("读取 config.json 时出错: %v", err)
+		os.Exit(1)
 	}
 	defer file.Close()
 
 	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&config)
-	if err != nil {
-		log.Fatalf("解析 config.json 时出错: %v\n", err)
+	if err := decoder.Decode(&config); err != nil {
+		logError("解析 config.json 时出错: %v", err)
+		os.Exit(1)
 	}
+	logInfo("成功加载配置文件 config.json")
 }
 
 func updateFiles() {
@@ -195,27 +291,41 @@ func initDB() {
 		log.Fatalf("无法打开数据库: %v\n", err)
 	}
 
+	// 创建访问日志表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS access_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		ip TEXT,
 		timestamp DATETIME
 	)`)
 	if err != nil {
-		log.Fatalf("创建表失败: %v\n", err)
+		log.Fatalf("创建访问日志表失败: %v\n", err)
 	}
 
+	// 创建路由日志表，添加 UNIQUE 约束
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS route_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		route TEXT,
-		count INTEGER
+		route TEXT UNIQUE,
+		count INTEGER DEFAULT 0
 	)`)
 	if err != nil {
-		log.Fatalf("创建表失败: %v\n", err)
+		log.Fatalf("创建路由日志表失败: %v\n", err)
 	}
 
+	// 清理旧日志
 	_, err = db.Exec(`DELETE FROM access_logs WHERE timestamp < DATETIME('now', '-48 hours')`)
 	if err != nil {
 		log.Fatalf("删除旧日志失败: %v\n", err)
+	}
+
+	// 添加索引以提高查询性能
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp ON access_logs(timestamp)`)
+	if err != nil {
+		log.Printf("创建时间戳索引失败: %v\n", err)
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_access_logs_ip ON access_logs(ip)`)
+	if err != nil {
+		log.Printf("创建 IP 索引失败: %v\n", err)
 	}
 }
 
@@ -532,13 +642,349 @@ func updateFileInfo(filePath string) {
 	log.Printf("文件 %s 的最新修改时间: %s\n", filePath, toBeijingTime(info.ModTime()))
 }
 
-func main() {
-	http.HandleFunc("/", rootHandler)
-	http.HandleFunc("/proxy.txt", fileHandler)
-	http.HandleFunc("/cn.txt", fileHandler)
-	http.HandleFunc("/http.txt", fileHandler)
-	http.HandleFunc("/stats", statsHandler)
+// 加载主配置
+func loadConfig() Config {
+	mu.Lock()
+	defer mu.Unlock()
+	
+	file, err := os.Open("config.json")
+	if err != nil {
+		log.Printf("读取 config.json 时出错: %v，使用默认配置\n", err)
+		return Config{
+			PoweredBy: "Unknown",
+			Token:    "default_token",
+			Port:     8080,
+		}
+	}
+	defer file.Close()
 
-	log.Printf("服务已启动，监听端口 :%d\n", config.Port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil))
+	var cfg Config
+	if err := json.NewDecoder(file).Decode(&cfg); err != nil {
+		log.Printf("解析 config.json 时出错: %v，使用默认配置\n", err)
+		return Config{
+			PoweredBy: "Unknown",
+			Token:    "default_token",
+			Port:     8080,
+		}
+	}
+	return cfg
+}
+
+// 加载IP控制配置
+func loadIPControlConfig() IPControlConfig {
+	mu.Lock()
+	defer mu.Unlock()
+	
+	if _, err := os.Stat("ipcontrol.json"); os.IsNotExist(err) {
+		defaultConfig := IPControlConfig{
+			Mode:      "none",
+			Blacklist: []string{},
+			Whitelist: []string{"127.0.0.1"},
+		}
+		
+		data, err := json.MarshalIndent(defaultConfig, "", "    ")
+		if err != nil {
+			logError("创建默认 IP 控制配置失败: %v", err)
+			return defaultConfig
+		}
+		
+		if err := os.WriteFile("ipcontrol.json", data, 0644); err != nil {
+			logError("写入默认 IP 控制配置失败: %v", err)
+			return defaultConfig
+		}
+		
+		logInfo("已创建默认配置文件 ipcontrol.json")
+		return defaultConfig
+	}
+	
+	file, err := os.Open("ipcontrol.json")
+	if err != nil {
+		logError("读取 ipcontrol.json 时出错: %v", err)
+		return IPControlConfig{Mode: "none"}
+	}
+	defer file.Close()
+
+	var cfg IPControlConfig
+	if err := json.NewDecoder(file).Decode(&cfg); err != nil {
+		logError("解析 ipcontrol.json 时出错: %v", err)
+		return IPControlConfig{Mode: "none"}
+	}
+	return cfg
+}
+
+// 保存IP控制配置
+func saveIPControlConfig(cfg IPControlConfig) error {
+	mu.Lock()
+	defer mu.Unlock()
+	
+	data, err := json.MarshalIndent(cfg, "", "    ")
+	if err != nil {
+		return err
+	}
+	
+	return os.WriteFile("ipcontrol.json", data, 0644)
+}
+
+// IP控制
+func ipControlMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 检查 token
+		token := r.Header.Get("Authorization")
+		config := loadConfig()
+		if token == config.Token {
+			// 如果有有效的 token，直接放行绕过黑白名单(安全问题?我不管!)
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// 没有有效 token 时检查黑白名单
+		clientIP := getClientIP(r)
+		ipConfig := loadIPControlConfig()
+
+		switch ipConfig.Mode {
+		case "blacklist":
+			for _, ip := range ipConfig.Blacklist {
+				if ip == clientIP {
+					http.Error(w, "403 Why not play Genshin Impact?", http.StatusForbidden)
+					return
+				}
+			}
+		case "whitelist":
+			allowed := false
+			for _, ip := range ipConfig.Whitelist {
+				if ip == clientIP {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				http.Error(w, "403 Why not play Genshin Impact?", http.StatusForbidden)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// 添加IP到黑名单
+func addToBlacklist(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !validateToken(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ipConfig := loadIPControlConfig()
+	ipConfig.Blacklist = append(ipConfig.Blacklist, req.IP)
+	if err := saveIPControlConfig(ipConfig); err != nil {
+		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// 从黑名单移除IP
+func removeFromBlacklist(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !validateToken(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ipConfig := loadIPControlConfig()
+	for i, ip := range ipConfig.Blacklist {
+		if ip == req.IP {
+			ipConfig.Blacklist = append(ipConfig.Blacklist[:i], ipConfig.Blacklist[i+1:]...)
+			break
+		}
+	}
+	if err := saveIPControlConfig(ipConfig); err != nil {
+		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// 添加IP到白名单
+func addToWhitelist(w http.ResponseWriter, r *http.Request) {
+	config := loadConfig()
+	
+	// 检查请求方法
+	if (config.APIMethod == "post" && r.Method != http.MethodPost) ||
+	   (config.APIMethod == "get" && r.Method != http.MethodGet) ||
+	   (config.APIMethod != "both" && r.Method != http.MethodPost && r.Method != http.MethodGet) {
+		sendJSONResponse(w, http.StatusMethodNotAllowed, Response{
+			Success: false,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	if !validateToken(r) {
+		sendJSONResponse(w, http.StatusUnauthorized, Response{
+			Success: false,
+			Message: "Unauthorized: Invalid token",
+		})
+		return
+	}
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+
+	// 根据请求方法解析参数
+	if r.Method == http.MethodPost {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			sendJSONResponse(w, http.StatusBadRequest, Response{
+				Success: false,
+				Message: "Invalid request body: " + err.Error(),
+			})
+			return
+		}
+	} else {
+		req.IP = r.URL.Query().Get("ip")
+	}
+
+	if req.IP == "" {
+		sendJSONResponse(w, http.StatusBadRequest, Response{
+			Success: false,
+			Message: "IP address is required",
+		})
+		return
+	}
+
+	ipConfig := loadIPControlConfig()
+	// 检查 IP 是否已存在
+	for _, ip := range ipConfig.Whitelist {
+		if ip == req.IP {
+			sendJSONResponse(w, http.StatusOK, Response{
+				Success: false,
+				Message: "IP already exists in whitelist",
+			})
+			return
+		}
+	}
+	
+	ipConfig.Whitelist = append(ipConfig.Whitelist, req.IP)
+	if err := saveIPControlConfig(ipConfig); err != nil {
+		sendJSONResponse(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Message: "Failed to save configuration: " + err.Error(),
+		})
+		return
+	}
+
+	sendJSONResponse(w, http.StatusOK, Response{
+		Success: true,
+		Message: "IP added to whitelist successfully",
+	})
+}
+
+// 响应结构体辅助函数
+type Response struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+func sendJSONResponse(w http.ResponseWriter, status int, response Response) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(response)
+	
+	// 记录 API 访问日志
+	r := w.(interface{ Request() *http.Request }).Request()
+	logAPI(r, status, response.Message)
+}
+
+// 从白名单移除IP
+func removeFromWhitelist(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !validateToken(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ipConfig := loadIPControlConfig()
+	for i, ip := range ipConfig.Whitelist {
+		if ip == req.IP {
+			ipConfig.Whitelist = append(ipConfig.Whitelist[:i], ipConfig.Whitelist[i+1:]...)
+			break
+		}
+	}
+	if err := saveIPControlConfig(ipConfig); err != nil {
+		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// 验证token
+func validateToken(r *http.Request) bool {
+	config := loadConfig()
+	token := r.Header.Get("Authorization")
+	return token == config.Token
+}
+
+func main() {
+	router := mux.NewRouter()
+	router.Use(ipControlMiddleware)
+
+	// 注册路由
+	router.HandleFunc("/", rootHandler)
+	router.HandleFunc("/proxy.txt", fileHandler)
+	router.HandleFunc("/cn.txt", fileHandler)
+	router.HandleFunc("/http.txt", fileHandler)
+	router.HandleFunc("/stats", statsHandler)
+
+	// API 路由
+	router.HandleFunc("/api/blacklist/add", addToBlacklist)
+	router.HandleFunc("/api/blacklist/remove", removeFromBlacklist)
+	router.HandleFunc("/api/whitelist/add", addToWhitelist)
+	router.HandleFunc("/api/whitelist/remove", removeFromWhitelist)
+
+	logInfo("服务已启动，监听端口 :%d", config.Port)
+	logInfo("API 方法限制: %s", config.APIMethod)
+	ipConfig := loadIPControlConfig()
+	logInfo("IP 控制模式: %s", ipConfig.Mode)
+
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), router))
 }

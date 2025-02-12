@@ -60,8 +60,116 @@ C:\Users\chanh\Desktop\web
     go run web.go
     ```
 
+
 ## 贡献 🤝
 如果你想为这个项目做出贡献，请提交 pull request 或者报告问题。
 
 ## 许可证 📄
 该项目使用 Apache 许可证。
+
+## 配置说明 ⚙️
+
+### 主配置文件 (config.json)
+```json
+{
+    "poweredBy": "@CLFchen",        // 服务提供者标识
+    "token": "123456788",           // API 认证令牌
+    "port": 8080,                   // 服务器端口
+    "serverLocation": "xxx",        // 服务器位置说明
+    "apiMethod": "both"             // API 请求方法限制："post", "get", "both"
+}
+```
+
+### IP 控制配置文件 (ipcontrol.json)
+```json
+{
+    "mode": "whitelist",            // IP 控制模式："none", "blacklist", "whitelist"
+    "blacklist": [],                // IP 黑名单列表
+    "whitelist": ["127.0.0.1"]      // IP 白名单列表
+}
+```
+
+## API 接口说明 📡
+
+所有 API 接口都需要在请求头中携带 Authorization 令牌（配置文件中的 token 值）。
+携带有效 token 的请求将跳过 IP 控制检查。
+
+### 白名单管理
+
+#### 添加 IP 到白名单
+- POST 方法：
+```bash
+curl -X POST 'http://localhost:8080/api/whitelist/add' \
+-H 'Authorization: 123456788' \
+-H 'Content-Type: application/json' \
+-d '{"ip": "192.168.1.1"}'
+```
+
+- GET 方法：
+```bash
+curl -X GET 'http://localhost:8080/api/whitelist/add?ip=192.168.1.1' \
+-H 'Authorization: 123456788'
+```
+
+#### 从白名单移除 IP
+- POST 方法：
+```bash
+curl -X POST 'http://localhost:8080/api/whitelist/remove' \
+-H 'Authorization: 123456788' \
+-H 'Content-Type: application/json' \
+-d '{"ip": "192.168.1.1"}'
+```
+
+- GET 方法：
+```bash
+curl -X GET 'http://localhost:8080/api/whitelist/remove?ip=192.168.1.1' \
+-H 'Authorization: 123456788'
+```
+
+### 黑名单管理
+
+#### 添加 IP 到黑名单
+- POST 方法：
+```bash
+curl -X POST 'http://localhost:8080/api/blacklist/add' \
+-H 'Authorization: 123456788' \
+-H 'Content-Type: application/json' \
+-d '{"ip": "192.168.1.1"}'
+```
+
+- GET 方法：
+```bash
+curl -X GET 'http://localhost:8080/api/blacklist/add?ip=192.168.1.1' \
+-H 'Authorization: 123456788'
+```
+
+#### 从黑名单移除 IP
+- POST 方法：
+```bash
+curl -X POST 'http://localhost:8080/api/blacklist/remove' \
+-H 'Authorization: 123456788' \
+-H 'Content-Type: application/json' \
+-d '{"ip": "192.168.1.1"}'
+```
+
+- GET 方法：
+```bash
+curl -X GET 'http://localhost:8080/api/blacklist/remove?ip=192.168.1.1' \
+-H 'Authorization: 123456788'
+```
+
+### API 响应格式
+```json
+{
+    "success": true,           // 操作是否成功
+    "message": "操作说明信息"    // 详细的操作结果说明
+}
+```
+
+### 常见响应状态码
+- 200: 操作成功
+- 400: 请求参数错误
+- 401: 未授权（token 无效）
+- 403: IP 被限制访问
+- 405: 请求方法不允许
+- 500: 服务器内部错误

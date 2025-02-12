@@ -4,6 +4,7 @@ go 1.22.2
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0
+	github.com/gorilla/mux v1.8.0
 	modernc.org/sqlite v1.34.5
 )
 
