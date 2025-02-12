@@ -64,4 +64,4 @@ C:\Users\chanh\Desktop\web
 如果你想为这个项目做出贡献，请提交 pull request 或者报告问题。
 
 ## 许可证 📄
-该项目使用 MIT 许可证。
+该项目使用 Apache 许可证。
