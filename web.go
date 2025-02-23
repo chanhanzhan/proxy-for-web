@@ -43,12 +43,13 @@ var (
 
 // 配置结构体
 type Config struct {
-	PoweredBy      string `json:"poweredBy"`
-	Token          string `json:"token"`
-	Port           int    `json:"port"`
-	ServerLocation string `json:"serverLocation"`
-	APIMethod      string `json:"apiMethod"`     // "post", "get", "both"
-	MaxTokenTries  int    `json:"maxTokenTries"` // 最大尝试次数
+	PoweredBy      string   `json:"poweredBy"`
+	Token          string   `json:"token"`
+	Port           int      `json:"port"`
+	ServerLocation string   `json:"serverLocation"`
+	APIMethod      string   `json:"apiMethod"`     // "post", "get", "both"
+	MaxTokenTries  int      `json:"maxTokenTries"` // 最大尝试次数
+	AuthKeys       []string `json:"authKeys"`      // 支持多个鉴权key
 }
 
 // IPControl配置结构体
@@ -137,11 +138,12 @@ func readConfig() {
 	if _, err := os.Stat("config.json"); os.IsNotExist(err) {
 		defaultConfig := Config{
 			PoweredBy:      "@CLFchen",
-			Token:          "123456788",
+			Token:          "123456789",
 			Port:           8080,
 			ServerLocation: "当前测试服务器位于: xxx",
 			APIMethod:      "both",
 			MaxTokenTries:  5,
+			AuthKeys:       []string{"123456789"}, // 默认鉴权 keys
 		}
 
 		data, err := json.MarshalIndent(defaultConfig, "", "    ")
@@ -395,6 +397,13 @@ func getTopRoutes(limit int) ([]string, error) {
 }
 
 func fileHandler(w http.ResponseWriter, r *http.Request) {
+	// 校验鉴权参数 key
+	key := r.URL.Query().Get("key")
+	if !isValidAuthKey(key, config.AuthKeys) {
+		http.Error(w, "403 Forbidden: Invalid key", http.StatusForbidden)
+		return
+	}
+
 	filename := filepath.Base(r.URL.Path)
 	if filename != proxyFile && filename != cnFile && filename != httpFile {
 		logWarn("请求不存在的文件: %s", filename)
@@ -1016,4 +1025,14 @@ func main() {
 	logInfo("IP 控制模式: %s", ipConfig.Mode)
 
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), router))
+}
+
+// 添加辅助函数，判断 key 是否有合法鉴权
+func isValidAuthKey(key string, keys []string) bool {
+	for _, k := range keys {
+		if key == k {
+			return true
+		}
+	}
+	return false
 }
