@@ -197,25 +197,47 @@ func findFile(filename string) string {
 	return file
 }
 
+// updateFileModTime 更新文件 filePath 的修改时间，并转换为北京时间存入 fileModTime。
 func updateFileModTime(filePath string) {
 	if filePath == "" {
 		return
 	}
 	info, err := os.Stat(filePath)
 	if err != nil {
-		log.Printf("无法获取文件 %s 的状态: %v\n", filePath, err)
+		log.Printf("获取文件 %s 状态失败: %v\n", filePath, err)
 		return
 	}
-	fileModTime[filePath] = info.ModTime()
+	fileModTime[filePath] = info.ModTime().In(getBeijingLocation())
 }
 
-func toBeijingTime(t time.Time) string {
-	location, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		log.Printf("加载时区失败: %v\n", err)
-		return t.Format("2006-01-02 15:04:05")
+// updateFileInfo 更新文件 filePath 的最新修改时间，并打印输出北京时间。
+// 此函数调用后，fileModTime 中保存的均为北京时间。
+func updateFileInfo(filePath string) {
+	if filePath == "" {
+		return
 	}
-	return t.In(location).Format("2006-01-02 15:04:05")
+	info, err := os.Stat(filePath)
+	if err != nil {
+		log.Printf("获取文件 %s 状态失败: %v\n", filePath, err)
+		return
+	}
+	fileModTime[filePath] = info.ModTime().In(getBeijingLocation())
+	log.Printf("文件 %s 最新修改时间: %s\n", filePath, toBeijingTime(info.ModTime().In(getBeijingLocation())))
+}
+
+// toBeijingTime 将时间 t 转换为北京时间格式字符串。
+func toBeijingTime(t time.Time) string {
+	return t.In(getBeijingLocation()).Format("2006-01-02 15:04:05")
+}
+
+// getBeijingLocation 返回北京时间的时区对象。
+// 如果加载失败，则返回本地时区。
+func getBeijingLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.Local
+	}
+	return loc
 }
 
 func getClientIP(r *http.Request) string {
@@ -572,12 +594,12 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var err error
-	data.TopIPs, err = getTopIPs(15)
+	data.TopIPs, err = getTopIPs(100)
 	if err != nil {
 		log.Printf("查询热门 IP 失败: %v\n", err)
 	}
 
-	data.TopRoutes, err = getTopRoutes(15)
+	data.TopRoutes, err = getTopRoutes(100)
 	if err != nil {
 		log.Printf("查询热门路由失败: %v\n", err)
 	}
@@ -613,6 +635,11 @@ func renderTemplate(w http.ResponseWriter, tmplName, tmplContent string, data in
 }
 
 func watchFiles() {
+	// 将需要监视的文件转为绝对路径
+	absProxy, _ := filepath.Abs(proxyFile)
+	absCn, _ := filepath.Abs(cnFile)
+	absHTTP, _ := filepath.Abs(httpFile)
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		logError("创建文件监视器失败: %v", err)
@@ -627,8 +654,10 @@ func watchFiles() {
 				if !ok {
 					return
 				}
-				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-					if event.Name == proxyFile || event.Name == cnFile || event.Name == httpFile {
+				// 转换事件路径为绝对路径
+				absEvent, _ := filepath.Abs(event.Name)
+				if event.Op&(fsnotify.Write|fsnotify.Create) != 0 {
+					if absEvent == absProxy || absEvent == absCn || absEvent == absHTTP {
 						updateFileModTime(event.Name)
 						updateFileInfo(event.Name)
 						applyFileChanges(event.Name)
@@ -643,7 +672,8 @@ func watchFiles() {
 		}
 	}()
 
-	files := []string{proxyFile, cnFile, httpFile}
+	// 添加以绝对路径添加监视文件
+	files := []string{absProxy, absCn, absHTTP}
 	for _, file := range files {
 		if file != "" {
 			err = watcher.Add(file)
@@ -671,19 +701,6 @@ func applyFileChanges(filePath string) {
 	}
 }
 
-func updateFileInfo(filePath string) {
-	if filePath == "" {
-		return
-	}
-	info, err := os.Stat(filePath)
-	if err != nil {
-		log.Printf("无法获取文件 %s 的状态: %v\n", filePath, err)
-		return
-	}
-	fileModTime[filePath] = info.ModTime()
-	log.Printf("文件 %s 的最新修改时间: %s\n", filePath, toBeijingTime(info.ModTime()))
-}
-
 // 加载主配置
 func loadConfig() Config {
 	file, err := os.Open("config.json")
@@ -706,7 +723,8 @@ func loadIPControlConfig() IPControlConfig {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if _, err := os.Stat("ipcontrol.json"); os.IsNotExist(err) {
+	_, err := os.Stat("ipcontrol.json")
+	if os.IsNotExist(err) {
 		// 创建默认配置
 		defaultConfig := IPControlConfig{
 			Mode:      "none",
@@ -949,10 +967,6 @@ func sendJSONResponse(w http.ResponseWriter, status int, response Response) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(response)
-
-	// 记录 API 访问日志
-	r := w.(interface{ Request() *http.Request }).Request()
-	logAPI(r, status, response.Message)
 }
 
 // 从白名单移除IP
@@ -1003,12 +1017,142 @@ func cssHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(styleCSS))
 }
 
+// 新增：保存配置函数
+func saveConfig(cfg Config) error {
+	data, err := json.MarshalIndent(cfg, "", "    ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile("config.json", data, 0644)
+}
+
+// 新增：辅助函数验证token是否合法
+func isValidToken(token string) bool {
+	return token == loadConfig().Token
+}
+
+// 修改：允许GET和POST方法添加鉴权key，并必须传入正确的token
+func addAuthKeyHandler(w http.ResponseWriter, r *http.Request) {
+	var key, token string
+	if r.Method == http.MethodPost {
+		var req struct {
+			Key   string `json:"key"`
+			Token string `json:"token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		key = req.Key
+		token = req.Token
+	} else { // GET 请求
+		key = r.URL.Query().Get("key")
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" || !isValidToken(token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if key == "" {
+		http.Error(w, "Key is required", http.StatusBadRequest)
+		return
+	}
+	cfg := loadConfig()
+	for _, existingKey := range cfg.AuthKeys {
+		if existingKey == key {
+			sendJSONResponse(w, http.StatusOK, Response{
+				Success: false,
+				Message: "Key already exists",
+			})
+			return
+		}
+	}
+	cfg.AuthKeys = append(cfg.AuthKeys, key)
+	if err := saveConfig(cfg); err != nil {
+		sendJSONResponse(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Message: "Failed to save configuration: " + err.Error(),
+		})
+		return
+	}
+	// 更新全局配置，使新key立即生效
+	config = loadConfig()
+	sendJSONResponse(w, http.StatusOK, Response{
+		Success: true,
+		Message: "Auth key added successfully",
+	})
+}
+
+// 新增：允许GET和POST方法删除鉴权key，并必须传入正确的token
+func deleteAuthKeyHandler(w http.ResponseWriter, r *http.Request) {
+	var key, token string
+	if r.Method == http.MethodPost {
+		var req struct {
+			Key   string `json:"key"`
+			Token string `json:"token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		key = req.Key
+		token = req.Token
+	} else { // GET 请求
+		key = r.URL.Query().Get("key")
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" || !isValidToken(token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if key == "" {
+		http.Error(w, "Key is required", http.StatusBadRequest)
+		return
+	}
+	cfg := loadConfig()
+	found := false
+	newKeys := []string{}
+	for _, existingKey := range cfg.AuthKeys {
+		if existingKey == key {
+			found = true
+			continue
+		}
+		newKeys = append(newKeys, existingKey)
+	}
+	if !found {
+		sendJSONResponse(w, http.StatusOK, Response{
+			Success: false,
+			Message: "Key not found",
+		})
+		return
+	}
+	cfg.AuthKeys = newKeys
+	if err := saveConfig(cfg); err != nil {
+		sendJSONResponse(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Message: "Failed to save configuration: " + err.Error(),
+		})
+		return
+	}
+	// 更新全局配置，确保旧 key 失效
+	config = loadConfig()
+	sendJSONResponse(w, http.StatusOK, Response{
+		Success: true,
+		Message: "Auth key deleted successfully",
+	})
+}
+
 func main() {
 	router := mux.NewRouter()
 	router.Use(ipControlMiddleware)
 
 	// 注册 CSS 路由
 	router.HandleFunc("/css/style.css", cssHandler)
+
+	// 修改：鉴权 key 添加路由支持 GET 和 POST（需传入 token 参数）
+	router.HandleFunc("/auth/add", addAuthKeyHandler).Methods(http.MethodGet, http.MethodPost)
+	// 新增：鉴权 key 删除路由支持 GET 和 POST（需传入 token 参数）
+	router.HandleFunc("/auth/del", deleteAuthKeyHandler).Methods(http.MethodGet, http.MethodPost)
 
 	// 其他路由注册...
 	router.HandleFunc("/", rootHandler)
